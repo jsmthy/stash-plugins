@@ -25,6 +25,8 @@ jobs:
           fetch-depth: "0"
       - run: |
           cd main
+          ls -l build_site.sh 
+          chmod +x ./build_site.sh
           ./build_site.sh ../_site/main
       - name: Checkout develop
         uses: actions/checkout@v2
@@ -35,6 +37,8 @@ jobs:
           fetch-depth: "0"
       - run: |
           cd develop
+          ls -l build_site.sh 
+          chmod +x ./build_site.sh
           ../main/build_site.sh ../_site/develop
       - uses: actions/upload-pages-artifact@v3
 
