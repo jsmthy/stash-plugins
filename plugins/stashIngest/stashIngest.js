@@ -2,11 +2,8 @@
   'use strict';
 
   log.Debug(`Stash Ingest Plugin Loaded`)
-  log.Debug(`Input1: `);
-  log.Debug(JSON.stringify(input));
-  log.Debug(`Input2: `);
-  log.Debug(`Input3: `);
-  log.Debug(`Input4: `);
+  log.Debug(`input.Args.hookContext`);
+  log.Debug(JSON.stringify(input.Args.hookContext));
 
   return { Output: "ok" };
 
