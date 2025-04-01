@@ -57,7 +57,7 @@
 
     // set newFilename [Studio]/[Studio] - [YYYY-MM-DD] - [Title].ext
     const destination_basename = `${result.findScene.studio.name} - ${result.findScene.date} - ${result.findScene.title}.${ext}`;
-    const destination_folder = `${fileLibraryPath}/${result.findScene.studio.name}`;
+    const destination_folder = sanitizeFilename(`${fileLibraryPath}/${result.findScene.studio.name}`);
 
     // move files
     var mutation = "\
@@ -87,3 +87,14 @@
   return { Output: "ok" };
 
 })();
+
+function sanitizeFilename(filePath) {
+  // Define a regular expression for characters that are generally considered invalid
+  // in filenames across different operating systems. This is a common, but not exhaustive, list.
+  const invalidCharsRegex = /[<>:"\/\\|?*\x00-\x1F]/g;
+
+  // Replace invalid characters with an underscore (or any other safe character)
+  const sanitizedFilename = filePath.replace(invalidCharsRegex, '_');
+
+  return sanitizedFilename;
+}
