@@ -83,6 +83,7 @@
       }
     };
 
+    log.Debug(`Moving file ${fileId} to ${destination_folder}/${destination_basename}`);
     result = gql.Do(mutation, variables);
     log.Debug(result);
 
@@ -96,21 +97,3 @@
   return { Output: "ok" };
 
 })();
-
-function checkAllFieldsPopulated(sceneId) {
-  log.Debug(`checkAllFieldsPopulated`);
-
-  // check if title, studio, and date are populated and organized is set to true
-  if () {
-    log.Debug(`All fields populated`);
-  } else {
-    log.Debug(`Not all fields populated`);
-    return false;
-  }
-
-  // [Studio]/[Studio] - [YYYY-MM-DD] - [Title]
-  const newFilename = `${result.findScene.studio.name}/${result.findScene.studio.name} - ${result.findScene.date} - ${result.findScene.title}`;
-
-  return newFilename;
-
-}
