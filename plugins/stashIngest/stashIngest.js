@@ -21,13 +21,7 @@
         }\
       }";
 
-    var variables = {
-      input: {
-        'id': sceneId
-      }
-    };
-
-    result = gql.Do(query, variables);
+    result = gql.Do(query, { 'id' : sceneId } );
     log.Debug(result);
 
     // check if scene has title, studio, and date populated
@@ -76,12 +70,10 @@
       }";
 
     var variables = {
-      input: {
-        'id': fileId,
-        'dest_folder': destination_folder,
-        'dest_basename': destination_basename
-      }
-    };
+      'id': fileId,
+      'dest_folder': destination_folder,
+      'dest_basename': destination_basename
+    }
 
     log.Debug(`Moving file ${fileId} to ${destination_folder}/${destination_basename}`);
     result = gql.Do(mutation, variables);
