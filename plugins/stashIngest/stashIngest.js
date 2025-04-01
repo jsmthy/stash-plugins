@@ -8,32 +8,36 @@
   if (input.Args.hookContext.type === "Scene.Update.Post") {
     log.Debug(`Hook Scene.Update.Post triggered`);
 
-    // get the scene id
-    const sceneId = input.Args.hookContext.input.id;
+    // If multiple scenes triggered, use input.ids, if just one scene, default to input.id
+    const sceneIds = (input.Args.hookContext.input.hasOwnProperty('ids')) ? input.Args.hookContext.input.ids : [input.Args.hookContext.input.id];
 
-    // Check that all rename conditions are met:
-    //   - Scene has id, title, studio.name, date, organized = true
-    //   - Scene has at least one file and that the first file has an id, path, and basename.
-    const sceneData = checkFileIsReadyForRename(sceneId);
-    log.Debug(`Returned scene data: ${JSON.stringify(sceneData)}`);
+    sceneIds.forEach((sceneId) => {
+      // Check that all rename conditions are met:
+      //   - Scene has id, title, studio.name, date, organized = true
+      //   - Scene has at least one file and that the first file has an id, path, and basename.
+      const sceneData = checkFileIsReadyForRename(sceneId);
+      log.Debug(`Returned scene data: ${JSON.stringify(sceneData)}`);
 
-    // Move target file to Studio-based directory
-    log.Debug(`Moving file ${sceneData.fileId} to ${sceneData.destinationFolder}/${sceneData.destinationBasename}`);
-    let mutationResult = gql.Do(`
-      mutation moveFiles($id:ID!,$dest_folder:String,$dest_basename:String) {
-        moveFiles(input: {
-          ids:[$id],
-          destination_folder:$dest_folder,
-          destination_basename:$dest_basename
-        })
-      }
-      `, {
-        'id': sceneData.fileId,
-        'dest_folder': sceneData.destinationFolder,
-        'dest_basename': sceneData.destinationBasename
-      });
-    log.Debug(`Move file mutation result: ${JSON.stringify(mutationResult)}`);
+      // Move target file to Studio-based directory
+      log.Debug(`Moving file ${sceneData.fileId} to ${sceneData.destinationFolder}/${sceneData.destinationBasename}`);
+      let mutationResult = gql.Do(`
+        mutation moveFiles($id:ID!,$dest_folder:String,$dest_basename:String) {
+          moveFiles(input: {
+            ids:[$id],
+            destination_folder:$dest_folder,
+            destination_basename:$dest_basename
+          })
+        }
+        `, {
+          'id': sceneData.fileId,
+          'dest_folder': sceneData.destinationFolder,
+          'dest_basename': sceneData.destinationBasename
+        });
+      log.Debug(`Move file mutation result: ${JSON.stringify(mutationResult)}`);
+    });
+
   }
+  
   
   // Return ok
   return { Output: "ok" };
