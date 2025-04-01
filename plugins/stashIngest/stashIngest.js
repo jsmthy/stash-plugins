@@ -56,8 +56,11 @@
     const ext = result.findScene.files[0].basename.split('.').pop();
 
     // set newFilename [Studio]/[Studio] - [YYYY-MM-DD] - [Title].ext
-    const destination_basename = sanitizeFilename(`${result.findScene.studio.name} - ${result.findScene.date} - ${result.findScene.title}.${ext}`);
+    const destination_basename = `${sanitizeFilename(result.findScene.studio.name)} - ${result.findScene.date} - ${sanitizeFilename(result.findScene.title)}.${ext}`;
     const destination_folder = `${fileLibraryPath}/${sanitizeFilename(result.findScene.studio.name)}`;
+
+    log.Debug(`destination_basename: ${destination_basename}`);
+    log.Debug(`destination_folder: ${destination_folder}`);
 
     // move files
     var mutation = "\
