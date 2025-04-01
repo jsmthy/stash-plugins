@@ -11,16 +11,3 @@ hooks:
     triggeredBy:
       - Scene.Update.Post
       - Scene.Create.Post
-# tasks:
-#   - name: task1
-#     description: task1 description
-#     defaultArgs:
-#       task: task1
-#       runTag: "[Run1]"
-#       testTag: "[Test1]"
-#   - name: task2
-#     description: task2 description
-#     defaultArgs:
-#       task: task2
-#       runTag: "[Run2]"
-#       testTag: "[Test2]"
