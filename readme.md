@@ -1,5 +1,8 @@
 # Stash Plugins
 
+> [!WARNING]
+> Absolutely no warranties or guarantees. Use at your own risk.
+
 ## Installation
 
 1. Stash > Settings > Plugins > Add Source
