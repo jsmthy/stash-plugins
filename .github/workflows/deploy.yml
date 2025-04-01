@@ -31,7 +31,7 @@ jobs:
         with:
           path: develop
           # change this ref to whatever dev branch/tag we need when necessary
-          ref: main
+          ref: develop
           fetch-depth: "0"
       - run: |
           cd develop
