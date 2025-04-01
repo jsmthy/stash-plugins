@@ -10,6 +10,7 @@ hooks:
     description: Updates scene info whenever a new scene is added.
     triggeredBy:
       - Scene.Update.Post
+      - Scene.Create.Post
 # tasks:
 #   - name: task1
 #     description: task1 description
