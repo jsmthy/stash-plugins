@@ -6,7 +6,7 @@ exec:
   - stashIngest.js
 interface: js
 hooks:
-  - name: run on scan
+  - name: Run on scene create and update.
     description: Updates scene info whenever a new scene is added.
     triggeredBy:
       - Scene.Update.Post
