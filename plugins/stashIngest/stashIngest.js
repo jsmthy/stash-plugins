@@ -21,7 +21,7 @@
         }\
       }";
 
-    result = gql.Do(query, { 'id' : sceneId } );
+    let result = gql.Do(query, { 'id' : sceneId } );
     log.Debug(result);
 
     // check if scene has title, studio, and date populated
@@ -76,8 +76,8 @@
     }
 
     log.Debug(`Moving file ${fileId} to ${destination_folder}/${destination_basename}`);
-    result = gql.Do(mutation, variables);
-    log.Debug(result);
+    let mutationResult = gql.Do(mutation, variables);
+    log.Debug(mutationResult);
 
      
   }
