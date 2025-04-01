@@ -1,0 +1,13 @@
+# example plugin config
+name: Stash Ingest
+description: Moves identified scenes from the ".StashIngest" folder to the root "Scenes" folder.
+version: 0.1.0
+exec:
+  - stashIngest.js
+interface: js
+hooks:
+  - name: run on scan
+    description: Updates scene info whenever a new scene is added.
+    triggeredBy:
+      - Scene.Update.Post
+      - Scene.Create.Post
