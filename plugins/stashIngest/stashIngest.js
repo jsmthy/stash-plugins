@@ -56,7 +56,7 @@
     const ext = result.findScene.files[0].basename.split('.').pop();
 
     // set newFilename [Studio]/[Studio] - [YYYY-MM-DD] - [Title].ext
-    const destination_basename = `${result.findScene.studio.name}/${result.findScene.studio.name} - ${result.findScene.date} - ${result.findScene.title}.${ext}`;
+    const destination_basename = `${result.findScene.studio.name} - ${result.findScene.date} - ${result.findScene.title}.${ext}`;
     const destination_folder = `${fileLibraryPath}/${result.findScene.studio.name}`;
 
     // move files
@@ -78,8 +78,6 @@
     log.Debug(`Moving file ${fileId} to ${destination_folder}/${destination_basename}`);
     let mutationResult = gql.Do(mutation, variables);
     log.Debug(mutationResult);
-
-     
   }
 
   //     check if studio, date, and title are set
