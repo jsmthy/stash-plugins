@@ -40,7 +40,7 @@ jobs:
       #     ls -l build_site.sh 
       #     chmod +x ./build_site.sh
       #     ../main/build_site.sh ../_site/develop
-      - uses: actions/upload-pages-artifact@v3
+      # - uses: actions/upload-pages-artifact@v3
 
   deploy:
     environment:
