@@ -9,7 +9,7 @@ hooks:
   - name: run on scan
     description: Updates scene info whenever a new scene is added.
     triggeredBy:
-      - Scene.Create.Post
+      - Scene.Update.Post
 tasks:
   - name: task1
     description: task1 description
