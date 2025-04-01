@@ -3,8 +3,8 @@
 
   function main() {
 
-    console.log("Stash Ingest Plugin Loaded");
-    console.log(input);
+    log.Info(`Stash Ingest Plugin Loaded`)
+    log.Info(`Input: `,input);
   
     return { Output: "ok" };
   }
