@@ -16,7 +16,7 @@
     // gql call get scene by id
     var query = "\
       query getSceneById($id: ID!) {\
-        findScene(input: $input) {\
+        findScene(id: $id) {\
           id, title, studio { name }, date, organized, files { id, path, basename }\
         }\
       }";
