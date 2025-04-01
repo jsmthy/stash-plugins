@@ -25,7 +25,7 @@ jobs:
           fetch-depth: "0"
       - run: |
           cd main
-          ./build_site.sh ../_site/stable
+          ./build_site.sh ../_site/main
       - name: Checkout develop
         uses: actions/checkout@v2
         with:
