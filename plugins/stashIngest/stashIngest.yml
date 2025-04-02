@@ -1,7 +1,7 @@
 # example plugin config
 name: Stash Ingest
 description: Moves identified scenes from the ".StashIngest" folder to the root "Scenes" folder.
-version: 1.0.1
+version: 1.0.2
 exec:
   - stashIngest.js
 interface: js

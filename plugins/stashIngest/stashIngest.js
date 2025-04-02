@@ -18,6 +18,11 @@
       const sceneData = checkFileIsReadyForRename(sceneId);
       log.Debug(`Returned scene data: ${JSON.stringify(sceneData)}`);
 
+      if (!sceneData) {
+        log.Debug(`Scene data is null, terminating run.`);
+        return { Output: "ok" };
+      }
+
       // Move target file to Studio-based directory
       log.Debug(`Moving file ${sceneData.fileId} to ${sceneData.destinationFolder}/${sceneData.destinationBasename}`);
       let mutationResult = gql.Do(`
