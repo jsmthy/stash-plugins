@@ -71,13 +71,13 @@ function sanitizeFilename(filename) {
 function checkFileIsReadyForRename(sceneId) {
     // GQL Call
     const result = gql.Do(`
-      query getSceneById($id: ID!) {
+      query getSceneById($id: ID!, $fpType:String!) {
         findScene(id: $id) {
-          id, title, studio { name }, date, organized, files { id, path, basename }
+          id, title, studio { name }, date, organized, files { id, path, basename, fingerprint(type:$fpType) }
         }
       }
       `,
-      { 'id' : sceneId }
+      { 'id' : sceneId, 'fpType' : "phash" }
     );
     log.Debug(`Scene ${sceneId} fetched: ${JSON.stringify(result)}`);
 
@@ -96,6 +96,12 @@ function checkFileIsReadyForRename(sceneId) {
     // Check files array is not empty
     if (result.findScene.files.length === 0) {
       log.Debug(`Scene has no files, skipping ...`);
+      return null;
+    }
+
+    // Check if first file has fingerprint/phash
+    if (!result.findScene.files[0].fingerprint) {
+      log.Debug(`Scene file has no phash, skipping ...`);
       return null;
     }
 
@@ -118,6 +124,7 @@ function checkFileIsReadyForRename(sceneId) {
     const sanitizedStudioName = sanitizeFilename(result.findScene.studio.name);
     const sanitizedDate = sanitizeFilename(result.findScene.date);
     const sanitizedTitle = sanitizeFilename(result.findScene.title);
+    const phash = result.findScene.files[0].fingerprint;
 
     return {
       sceneId: result.findScene.id,
@@ -126,6 +133,6 @@ function checkFileIsReadyForRename(sceneId) {
       date: result.findScene.date,
       fileId,
       destinationFolder: `${fileLibraryPath}/${sanitizedStudioName}`,
-      destinationBasename: `${sanitizedStudioName} - ${sanitizedDate} - ${sanitizedTitle}.${ext}`
+      destinationBasename: `${sanitizedStudioName} - ${sanitizedDate} - ${sanitizedTitle} [${phash}].${ext}`
     }
 }
