@@ -1,6 +1,21 @@
 import { pluginLog } from './log';
 import { sanitizeFilename } from './utils';
 
+/** Check if a path contains .StashIngest as a directory segment. */
+function isInStashIngest(filePath: string): boolean {
+  return filePath.split('/').includes('.StashIngest');
+}
+
+/**
+ * Extract the library root path (everything before .StashIngest).
+ * e.g. "/data/Libraries/Scenes/.StashIngest/Sub/file.mp4" → "/data/Libraries/Scenes"
+ */
+function getLibraryPath(filePath: string): string {
+  const parts = filePath.split('/');
+  const idx = parts.indexOf('.StashIngest');
+  return parts.slice(0, idx).join('/');
+}
+
 /**
  * Re-fetch a scene and check if any of its files is still in .StashIngest.
  * Guards against concurrent hook invocations moving the same file.
@@ -16,11 +31,7 @@ export function isStillInStashIngest(sceneId: string): boolean {
     `, { id: sceneId });
     const files = result?.findScene?.files;
     if (!files || files.length === 0) return false;
-    return files.some((f: any) => {
-      const parts = f.path.split('/');
-      parts.pop();
-      return parts.pop() === '.StashIngest';
-    });
+    return files.some((f: any) => isInStashIngest(f.path));
   } catch {
     return false;
   }
@@ -30,7 +41,7 @@ export function isStillInStashIngest(sceneId: string): boolean {
  * Fetches scene data and validates that all rename conditions are met:
  * - Scene has title, studio.name, date, organized = true
  * - Scene has at least one file
- * - File is located in a .StashIngest directory
+ * - File is located somewhere under a .StashIngest directory
  *
  * Phash is optional — VR files often lack it.
  * Returns a ScenePayload if ready, or null if any check fails.
@@ -76,30 +87,22 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
     return null;
   }
 
-  // Find the file that's in .StashIngest (scene may have multiple files)
-  const file = scene.files.find(f => {
-    const parts = f.path.split('/');
-    parts.pop(); // filename
-    return parts.pop() === '.StashIngest';
-  });
+  // Find the file that's under .StashIngest (scene may have multiple files, may be in subdirs)
+  const file = scene.files.find(f => isInStashIngest(f.path));
 
   if (!file) {
     pluginLog.Debug(`Scene ${sceneId} has no file in .StashIngest, skipping`);
     return null;
   }
 
-  const fileParts = file.path.split('/');
-  fileParts.pop(); // filename
   const ext = file.basename.split('.').pop()!;
-  fileParts.pop(); // .StashIngest
-  const fileLibraryPath = fileParts.join('/');
+  const fileLibraryPath = getLibraryPath(file.path);
 
   const sanitizedStudio = sanitizeFilename(scene.studio!.name);
   const sanitizedDate = sanitizeFilename(scene.date);
   const sanitizedTitle = sanitizeFilename(scene.title);
   const phash = file.fingerprint || null;
 
-  // Build basename with phash if available
   const basenameParts = `${sanitizedStudio} - ${sanitizedDate} - ${sanitizedTitle}`;
   const destinationBasename = phash
     ? `${basenameParts} [${phash}].${ext}`
