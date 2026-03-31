@@ -3,7 +3,7 @@
   // src/lib/settings.ts
   var PLUGIN_ID = "stashIngest";
   var DEFAULTS = {
-    handleDuplicates: false,
+    handleDuplicates: true,
     vrTagName: "VR"
   };
   function readPluginSettings() {

@@ -1,7 +1,7 @@
 const PLUGIN_ID = 'stashIngest';
 
 const DEFAULTS: PluginSettings = {
-  handleDuplicates: false,
+  handleDuplicates: true,
   vrTagName: 'VR',
 };
 
