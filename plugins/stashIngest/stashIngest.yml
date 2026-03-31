@@ -1,7 +1,7 @@
 # example plugin config
 name: Stash Ingest
 description: Moves identified scenes from ".StashIngest" to organized Studio directories. Optionally handles duplicates by quality preference.
-version: 1.3.3
+version: 1.3.4
 exec:
   - stashIngest.js
 interface: js

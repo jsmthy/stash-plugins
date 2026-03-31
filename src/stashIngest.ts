@@ -1,6 +1,6 @@
 import { pluginLog } from './lib/log';
 import { readPluginSettings } from './lib/settings';
-import { checkFileIsReadyForRename, isStillInStashIngest } from './lib/validation';
+import { checkFileIsReadyForRename, isStillInStashIngest, sceneHasFileOutsideIngest } from './lib/validation';
 import { findExistingDuplicate, shouldReplace, moveToDuplicates } from './lib/duplicates';
 import { isVR } from './lib/utils';
 
@@ -26,6 +26,14 @@ if (input.Args.hookContext.type === 'Scene.Update.Post') {
     }
 
     pluginLog.Info(`Processing scene ${sceneId}: ${sceneData.file.basename}`);
+
+    // Check if this scene already has a file outside .StashIngest/.StashDuplicates
+    // (same scene, multiple files — the .StashIngest copy is redundant)
+    if (sceneHasFileOutsideIngest(sceneData.sceneId, sceneData.fileId)) {
+      pluginLog.Info(`Scene ${sceneId} already has a file at destination — moving redundant .StashIngest copy to .StashDuplicates`);
+      moveToDuplicates(sceneData.fileId, sceneData.file.path);
+      return;
+    }
 
     if (settings.handleDuplicates) {
       const existing = findExistingDuplicate(sceneData);

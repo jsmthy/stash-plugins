@@ -6,6 +6,35 @@ function isInStashIngest(filePath: string): boolean {
   return filePath.split('/').includes('.StashIngest');
 }
 
+/** Check if a path is in a "real" library location (not .StashIngest or .StashDuplicates). */
+function isInLibrary(filePath: string): boolean {
+  const parts = filePath.split('/');
+  return !parts.includes('.StashIngest') && !parts.includes('.StashDuplicates');
+}
+
+/**
+ * Check if a scene has another file (besides excludeFileId) that's
+ * already in a real library location (not .StashIngest or .StashDuplicates).
+ * This detects redundant copies in .StashIngest when the scene already has
+ * a file at the destination.
+ */
+export function sceneHasFileOutsideIngest(sceneId: string, excludeFileId: string): boolean {
+  try {
+    const result = gql.Do(`
+      query checkFiles($id: ID!) {
+        findScene(id: $id) {
+          files { id, path }
+        }
+      }
+    `, { id: sceneId });
+    const files = result?.findScene?.files;
+    if (!files) return false;
+    return files.some((f: any) => f.id !== excludeFileId && isInLibrary(f.path));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Extract the library root path (everything before .StashIngest).
  * e.g. "/data/Libraries/Scenes/.StashIngest/Sub/file.mp4" → "/data/Libraries/Scenes"
