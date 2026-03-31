@@ -8,11 +8,11 @@ interface: js
 settings:
   handleDuplicates:
     displayName: Handle Duplicates
-    description: Compare quality of incoming files against existing duplicates and keep the preferred version. Losers moved to .StashDuplicates.
+    description: "Detects duplicates by phash match. 2D: prefers 1080p, keeps higher if below, keeps closest to 1080p if above. VR: always keeps highest resolution. Equal resolution: prefers better codec (av1 > hevc > h264). Rejected file is moved to .StashDuplicates."
     type: BOOLEAN
   vrTagName:
     displayName: VR Tag Name
-    description: Tag name used to identify VR scenes. VR scenes always prefer highest resolution.
+    description: Scenes with this tag are treated as VR content. Leave blank to use the default (VR).
     type: STRING
 hooks:
   - name: Run on scene create and update.
