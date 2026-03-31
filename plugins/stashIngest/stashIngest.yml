@@ -1,7 +1,7 @@
 # example plugin config
 name: Stash Ingest
 description: Moves identified scenes from ".StashIngest" to organized Studio directories. Optionally handles duplicates by quality preference.
-version: 1.2.2
+version: 1.2.3
 exec:
   - stashIngest.js
 interface: js
@@ -12,7 +12,7 @@ settings:
     type: BOOLEAN
   vrTagName:
     displayName: VR Tag Name
-    description: Scenes with this tag are treated as VR content. Leave blank to use the default (VR).
+    description: Scenes with this tag are treated as VR content. Leave blank to use the default (Virtual Reality).
     type: STRING
 hooks:
   - name: Run on scene create and update.
