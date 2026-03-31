@@ -2,7 +2,7 @@ import { pluginLog } from './log';
 import { sanitizeFilename } from './utils';
 
 /**
- * Re-fetch a scene and check if its first file is still in .StashIngest.
+ * Re-fetch a scene and check if any of its files is still in .StashIngest.
  * Guards against concurrent hook invocations moving the same file.
  */
 export function isStillInStashIngest(sceneId: string): boolean {
@@ -14,12 +14,13 @@ export function isStillInStashIngest(sceneId: string): boolean {
         }
       }
     `, { id: sceneId });
-    const path: string | undefined = result?.findScene?.files?.[0]?.path;
-    if (!path) return false;
-    const parts = path.split('/');
-    parts.pop(); // filename
-    const dir = parts.pop();
-    return dir === '.StashIngest';
+    const files = result?.findScene?.files;
+    if (!files || files.length === 0) return false;
+    return files.some((f: any) => {
+      const parts = f.path.split('/');
+      parts.pop();
+      return parts.pop() === '.StashIngest';
+    });
   } catch {
     return false;
   }
@@ -75,18 +76,23 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
     return null;
   }
 
-  const file = scene.files[0];
+  // Find the file that's in .StashIngest (scene may have multiple files)
+  const file = scene.files.find(f => {
+    const parts = f.path.split('/');
+    parts.pop(); // filename
+    return parts.pop() === '.StashIngest';
+  });
+
+  if (!file) {
+    pluginLog.Debug(`Scene ${sceneId} has no file in .StashIngest, skipping`);
+    return null;
+  }
 
   const fileParts = file.path.split('/');
   fileParts.pop(); // filename
   const ext = file.basename.split('.').pop()!;
-  const fileDir = fileParts.pop()!;
+  fileParts.pop(); // .StashIngest
   const fileLibraryPath = fileParts.join('/');
-
-  if (fileDir !== '.StashIngest') {
-    pluginLog.Debug(`Scene ${sceneId} file is not in .StashIngest, skipping`);
-    return null;
-  }
 
   const sanitizedStudio = sanitizeFilename(scene.studio!.name);
   const sanitizedDate = sanitizeFilename(scene.date);
