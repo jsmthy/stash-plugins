@@ -1,6 +1,6 @@
 # example plugin config
 name: Stash Ingest
-description: Moves identified scenes from the ".StashIngest" folder to the root "Scenes" folder.
+description: Moves identified scenes from ".StashIngest" to organized Studio directories. Optionally handles duplicates by quality preference.
 version: 1.1.1
 exec:
   - stashIngest.js
