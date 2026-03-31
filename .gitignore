@@ -1,3 +1,7 @@
+# Hidden directories
+.**/
+!.github/
+
 # Node.js dependencies
 node_modules/
 
@@ -10,16 +14,24 @@ yarn-error.log*
 
 # Environment variables
 .env
+.env.*
 
 # Build outputs
 dist/
 build/
+plugins/stashIngest/stashIngest.js
 
 # System files
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# IDE files
-.vscode/
-.idea/
+# Editor / IDE
 *.swp
+*.swo
+*~
+*.bak
+
+# Archives
+*.zip
+*.tar.gz

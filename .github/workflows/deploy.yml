@@ -17,15 +17,24 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Checkout main
         uses: actions/checkout@v2
         with:
           path: main
           ref: main
           fetch-depth: "0"
+      - name: Build TypeScript plugins (main)
+        run: |
+          cd main
+          npm ci
+          npm run build
       - run: |
           cd main
-          ls -l build_site.sh 
+          ls -l build_site.sh
           chmod +x ./build_site.sh
           ./build_site.sh ../_site/main
       - name: Checkout develop
@@ -35,9 +44,14 @@ jobs:
           # change this ref to whatever dev branch/tag we need when necessary
           ref: develop
           fetch-depth: "0"
+      - name: Build TypeScript plugins (develop)
+        run: |
+          cd develop
+          npm ci
+          npm run build
       - run: |
           cd develop
-          ls -l build_site.sh 
+          ls -l build_site.sh
           chmod +x ./build_site.sh
           ../main/build_site.sh ../_site/develop
       - uses: actions/upload-pages-artifact@v3

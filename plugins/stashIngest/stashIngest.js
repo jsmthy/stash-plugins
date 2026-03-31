@@ -1,138 +1,246 @@
-(function () {
-  'use strict';
-
-  log.Debug(`Stash Ingest Plugin Loaded`)
-  log.Debug(`input.Args.hookContext follows:\t\n${JSON.stringify(input.Args.hookContext)}`);
-
-  // On Scene.Update.Post Hook ...
-  if (input.Args.hookContext.type === "Scene.Update.Post") {
-    log.Debug(`Hook Scene.Update.Post triggered`);
-
-    // If multiple scenes triggered, use input.ids, if just one scene, default to input.id
-    const sceneIds = (input.Args.hookContext.input.hasOwnProperty('ids')) ? input.Args.hookContext.input.ids : [input.Args.hookContext.input.id];
-
-    sceneIds.forEach((sceneId) => {
-      // Check that all rename conditions are met:
-      //   - Scene has id, title, studio.name, date, organized = true
-      //   - Scene has at least one file and that the first file has an id, path, and basename.
-      const sceneData = checkFileIsReadyForRename(sceneId);
-      log.Debug(`Returned scene data: ${JSON.stringify(sceneData)}`);
-
-      if (!sceneData) {
-        log.Debug(`Scene data is null, terminating run.`);
-        return { Output: "ok" };
-      }
-
-      // Move target file to Studio-based directory
-      log.Debug(`Moving file ${sceneData.fileId} to ${sceneData.destinationFolder}/${sceneData.destinationBasename}`);
-      let mutationResult = gql.Do(`
-        mutation moveFiles($id:ID!,$dest_folder:String,$dest_basename:String) {
-          moveFiles(input: {
-            ids:[$id],
-            destination_folder:$dest_folder,
-            destination_basename:$dest_basename
-          })
-        }
-        `, {
-          'id': sceneData.fileId,
-          'dest_folder': sceneData.destinationFolder,
-          'dest_basename': sceneData.destinationBasename
-        });
-      log.Debug(`Move file mutation result: ${JSON.stringify(mutationResult)}`);
-    });
-
+"use strict";
+(() => {
+  // src/lib/settings.ts
+  var PLUGIN_ID = "stashIngest";
+  var DEFAULTS = {
+    handleDuplicates: false,
+    vrTagName: "VR"
+  };
+  function readPluginSettings() {
+    try {
+      const result = gql.Do(`query { configuration { plugins } }`);
+      const raw = result?.configuration?.plugins?.[PLUGIN_ID] ?? {};
+      return {
+        handleDuplicates: raw.handleDuplicates ?? DEFAULTS.handleDuplicates,
+        vrTagName: raw.vrTagName ?? DEFAULTS.vrTagName
+      };
+    } catch (e) {
+      log.Warn(`Failed to read plugin settings, using defaults: ${e}`);
+      return { ...DEFAULTS };
+    }
   }
-  
-  
-  // Return ok
-  return { Output: "ok" };
 
-})();
+  // src/lib/utils.ts
+  function sanitizeFilename(filename) {
+    return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, "");
+  }
+  function isVR(tags, vrTagName) {
+    const target = vrTagName.toLowerCase();
+    return tags.some((t) => t.name.toLowerCase() === target);
+  }
 
-/**
- * Removes characters invalid in most filesystems: < > : " / \ | ? *
- * and control characters (ASCII 0-31).
- *
- * @param {string} filename - The original filename.
- * @returns {string} The sanitized filename.
- */
-function sanitizeFilename(filename) {
-  // Replace characters that are invalid in Windows/macOS/Linux filenames.
-  // Also removes ASCII control characters (0-31).
-  return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '');
-}
-
-/**
- * Checks for scene data.
- * 
- * @param {number} sceneId - scene id integer
- * @returns {object} - returns the scene object or null
- */
-function checkFileIsReadyForRename(sceneId) {
-    // GQL Call
+  // src/lib/validation.ts
+  function checkFileIsReadyForRename(sceneId) {
     const result = gql.Do(`
-      query getSceneById($id: ID!, $fpType:String!) {
-        findScene(id: $id) {
-          id, title, studio { name }, date, organized, files { id, path, basename, fingerprint(type:$fpType) }
+    query getSceneById($id: ID!, $fpType: String!) {
+      findScene(id: $id) {
+        id, title, studio { name }, date, organized,
+        tags { name },
+        files {
+          id, path, basename, width, height, video_codec, bit_rate, size,
+          fingerprint(type: $fpType),
+          fingerprints { type value }
         }
       }
-      `,
-      { 'id' : sceneId, 'fpType' : "phash" }
-    );
+    }
+  `, { id: sceneId, fpType: "phash" });
     log.Debug(`Scene ${sceneId} fetched: ${JSON.stringify(result)}`);
-
-    // Check if scene has title, studio, and date populated
-    if (!(result.findScene.title && result.findScene.studio.name && result.findScene.date)) {
-      log.Debug(`Scene missing either title, studio, date, or organized tag, or all, skipping ...`);
+    const scene = result?.findScene;
+    if (!scene) {
+      log.Debug(`Scene ${sceneId} not found`);
       return null;
     }
-
-    // Check if organized = true
-    if (!(result.findScene.organized)) {
+    if (!(scene.title && scene.studio?.name && scene.date)) {
+      log.Debug(`Scene missing title, studio, or date, skipping ...`);
+      return null;
+    }
+    if (!scene.organized) {
       log.Debug(`Organized is not set to true, skipping ...`);
       return null;
     }
-
-    // Check files array is not empty
-    if (result.findScene.files.length === 0) {
+    if (scene.files.length === 0) {
       log.Debug(`Scene has no files, skipping ...`);
       return null;
     }
-
-    // Check if first file has fingerprint/phash
-    if (!result.findScene.files[0].fingerprint) {
+    const file = scene.files[0];
+    if (!file.fingerprint) {
       log.Debug(`Scene file has no phash, skipping ...`);
       return null;
     }
-
-    // Check if first file has id, path, and basename
-    const fileId = result.findScene.files[0].id; // get fileid
-
-    const filePath = result.findScene.files[0].path; // get file path
-    const fileParts = filePath.split('/'); // file path parts
-    const fileName = fileParts.pop(); // filename, should be the same as basename
-    const ext = result.findScene.files[0].basename.split('.').pop(); // get file extension
-    const fileDir = fileParts.pop(); // target file's immediate folder, should be ".StashIngest"
-    const fileLibraryPath = fileParts.join('/'); // ".StashIngest's parent folder", should be the library path but doesn't have to be
-
+    const fileParts = file.path.split("/");
+    fileParts.pop();
+    const ext = file.basename.split(".").pop();
+    const fileDir = fileParts.pop();
+    const fileLibraryPath = fileParts.join("/");
     if (fileDir !== ".StashIngest") {
       log.Debug(`File is not in /.StashIngest directory, skipping ...`);
       return null;
     }
-    
-    // Construct return payload
-    const sanitizedStudioName = sanitizeFilename(result.findScene.studio.name);
-    const sanitizedDate = sanitizeFilename(result.findScene.date);
-    const sanitizedTitle = sanitizeFilename(result.findScene.title);
-    const phash = result.findScene.files[0].fingerprint;
-
+    const sanitizedStudio = sanitizeFilename(scene.studio.name);
+    const sanitizedDate = sanitizeFilename(scene.date);
+    const sanitizedTitle = sanitizeFilename(scene.title);
+    const phash = file.fingerprint;
     return {
-      sceneId: result.findScene.id,
-      title: result.findScene.title,
-      studio: result.findScene.studio.name,
-      date: result.findScene.date,
-      fileId,
-      destinationFolder: `${fileLibraryPath}/${sanitizedStudioName}`,
-      destinationBasename: `${sanitizedStudioName} - ${sanitizedDate} - ${sanitizedTitle} [${phash}].${ext}`
+      sceneId: scene.id,
+      title: scene.title,
+      studio: scene.studio.name,
+      date: scene.date,
+      fileId: file.id,
+      file,
+      tags: scene.tags,
+      destinationFolder: `${fileLibraryPath}/${sanitizedStudio}`,
+      destinationBasename: `${sanitizedStudio} - ${sanitizedDate} - ${sanitizedTitle} [${phash}].${ext}`,
+      phash
+    };
+  }
+
+  // src/lib/duplicates.ts
+  var CODEC_RANK = {
+    av1: 3,
+    hevc: 2,
+    h264: 1,
+    vp9: 1,
+    mpeg4: 0,
+    wmv3: 0
+  };
+  function findExistingDuplicate(phash) {
+    const result = gql.Do(`
+    query findDupes($phash: String!) {
+      findScenes(
+        scene_filter: {
+          phash_distance: { value: $phash, modifier: EQUALS, distance: 0 }
+          path: { value: ".StashIngest", modifier: EXCLUDES }
+        }
+      ) {
+        scenes {
+          id
+          tags { name }
+          files {
+            ... on VideoFile {
+              id, path, basename, width, height, video_codec, bit_rate, size,
+              fingerprints { type value }
+            }
+          }
+        }
+      }
     }
-}
+  `, { phash });
+    const scenes = result?.findScenes?.scenes;
+    if (!scenes || scenes.length === 0) {
+      return null;
+    }
+    const scene = scenes[0];
+    if (!scene.files || scene.files.length === 0) {
+      return null;
+    }
+    return {
+      id: scene.id,
+      file: scene.files[0],
+      tags: scene.tags ?? []
+    };
+  }
+  function shouldReplace(existingFile, candidateFile, vrScene) {
+    const TARGET = 1080;
+    if (vrScene) {
+      if (candidateFile.height !== existingFile.height) {
+        return candidateFile.height > existingFile.height;
+      }
+      return codecRank(candidateFile) > codecRank(existingFile);
+    }
+    const candBelow = candidateFile.height < TARGET;
+    const existBelow = existingFile.height < TARGET;
+    if (candBelow && !existBelow) return false;
+    if (existBelow && !candBelow) return true;
+    if (candBelow && existBelow) {
+      if (candidateFile.height !== existingFile.height) {
+        return candidateFile.height > existingFile.height;
+      }
+      return codecRank(candidateFile) > codecRank(existingFile);
+    }
+    const candDist = candidateFile.height - TARGET;
+    const existDist = existingFile.height - TARGET;
+    if (candDist !== existDist) {
+      return candDist < existDist;
+    }
+    return codecRank(candidateFile) > codecRank(existingFile);
+  }
+  function codecRank(file) {
+    return CODEC_RANK[file.video_codec] ?? 0;
+  }
+  function moveToDuplicates(fileId, filePath) {
+    const parts = filePath.split("/");
+    const basename = parts.pop();
+    parts.pop();
+    const libraryPath = parts.join("/");
+    const destFolder = `${libraryPath}/.StashDuplicates`;
+    log.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
+    gql.Do(`
+    mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
+      moveFiles(input: {
+        ids: [$id],
+        destination_folder: $dest_folder,
+        destination_basename: $dest_basename
+      })
+    }
+  `, {
+      id: fileId,
+      dest_folder: destFolder,
+      dest_basename: basename
+    });
+  }
+
+  // src/stashIngest.ts
+  log.Debug("Stash Ingest Plugin Loaded");
+  log.Debug(`input.Args.hookContext follows:	
+${JSON.stringify(input.Args.hookContext)}`);
+  if (input.Args.hookContext.type === "Scene.Update.Post") {
+    log.Debug("Hook Scene.Update.Post triggered");
+    const settings = readPluginSettings();
+    log.Debug(`Plugin settings: ${JSON.stringify(settings)}`);
+    const sceneIds = input.Args.hookContext.input.hasOwnProperty("ids") ? input.Args.hookContext.input.ids : [input.Args.hookContext.input.id];
+    sceneIds.forEach((sceneId) => {
+      const sceneData = checkFileIsReadyForRename(sceneId);
+      log.Debug(`Returned scene data: ${JSON.stringify(sceneData)}`);
+      if (!sceneData) {
+        log.Debug("Scene data is null, terminating run.");
+        return;
+      }
+      if (settings.handleDuplicates) {
+        const existing = findExistingDuplicate(sceneData.phash);
+        if (existing) {
+          const vrScene = isVR(sceneData.tags, settings.vrTagName);
+          log.Debug(`Duplicate found (scene ${existing.id}). VR: ${vrScene}`);
+          if (shouldReplace(existing.file, sceneData.file, vrScene)) {
+            log.Info(`Candidate wins \u2014 replacing existing scene ${existing.id} file`);
+            moveToDuplicates(existing.file.id, existing.file.path);
+            moveFile(sceneData);
+          } else {
+            log.Info(`Existing scene ${existing.id} wins \u2014 moving candidate to .StashDuplicates`);
+            moveToDuplicates(sceneData.fileId, sceneData.file.path);
+          }
+          return;
+        }
+      }
+      moveFile(sceneData);
+    });
+  }
+  function moveFile(sceneData) {
+    log.Debug(`Moving file ${sceneData.fileId} to ${sceneData.destinationFolder}/${sceneData.destinationBasename}`);
+    const mutationResult = gql.Do(`
+    mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
+      moveFiles(input: {
+        ids: [$id],
+        destination_folder: $dest_folder,
+        destination_basename: $dest_basename
+      })
+    }
+  `, {
+      id: sceneData.fileId,
+      dest_folder: sceneData.destinationFolder,
+      dest_basename: sceneData.destinationBasename
+    });
+    log.Debug(`Move file mutation result: ${JSON.stringify(mutationResult)}`);
+  }
+})();
+// Plugin return value
+({ Output: "ok" });
