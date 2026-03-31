@@ -27,11 +27,11 @@ if (input.Args.hookContext.type === 'Scene.Update.Post') {
     }
 
     if (settings.handleDuplicates) {
-      const existing = findExistingDuplicate(sceneData.phash);
+      const existing = findExistingDuplicate(sceneData);
 
       if (existing) {
         const vrScene = isVR(sceneData.tags, settings.vrTagName);
-        pluginLog.Debug(`Duplicate found (scene ${existing.id}). VR: ${vrScene}`);
+        pluginLog.Debug(`Duplicate found (scene ${existing.id}, method: ${existing.matchMethod}). VR: ${vrScene}`);
 
         if (shouldReplace(existing.file, sceneData.file, vrScene)) {
           pluginLog.Info(`Candidate wins — replacing existing scene ${existing.id} file`);

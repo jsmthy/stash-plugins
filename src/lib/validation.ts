@@ -4,17 +4,21 @@ import { sanitizeFilename } from './utils';
 /**
  * Fetches scene data and validates that all rename conditions are met:
  * - Scene has title, studio.name, date, organized = true
- * - Scene has at least one file with a phash fingerprint
+ * - Scene has at least one file
  * - File is located in a .StashIngest directory
  *
+ * Phash is optional — VR files often lack it.
  * Returns a ScenePayload if ready, or null if any check fails.
  */
 export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null {
   const result = gql.Do(`
     query getSceneById($id: ID!, $fpType: String!) {
       findScene(id: $id) {
-        id, title, studio { name }, date, organized,
+        id, title, date, organized,
+        studio { id, name },
         tags { name },
+        stash_ids { endpoint, stash_id },
+        performers { id, name },
         files {
           id, path, basename, width, height, video_codec, bit_rate, size,
           fingerprint(type: $fpType),
@@ -49,11 +53,6 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
 
   const file = scene.files[0];
 
-  if (!file.fingerprint) {
-    pluginLog.Debug(`Scene ${sceneId} file has no phash, skipping`);
-    return null;
-  }
-
   const fileParts = file.path.split('/');
   fileParts.pop(); // filename
   const ext = file.basename.split('.').pop()!;
@@ -68,18 +67,27 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
   const sanitizedStudio = sanitizeFilename(scene.studio!.name);
   const sanitizedDate = sanitizeFilename(scene.date);
   const sanitizedTitle = sanitizeFilename(scene.title);
-  const phash = file.fingerprint;
+  const phash = file.fingerprint || null;
+
+  // Build basename with phash if available
+  const basenameParts = `${sanitizedStudio} - ${sanitizedDate} - ${sanitizedTitle}`;
+  const destinationBasename = phash
+    ? `${basenameParts} [${phash}].${ext}`
+    : `${basenameParts}.${ext}`;
 
   return {
     sceneId: scene.id,
     title: scene.title,
+    studioId: scene.studio!.id,
     studio: scene.studio!.name,
     date: scene.date,
     fileId: file.id,
     file,
     tags: scene.tags,
+    stashIds: scene.stash_ids ?? [],
+    performers: scene.performers ?? [],
     destinationFolder: `${fileLibraryPath}/${sanitizedStudio}`,
-    destinationBasename: `${sanitizedStudio} - ${sanitizedDate} - ${sanitizedTitle} [${phash}].${ext}`,
+    destinationBasename,
     phash,
   };
 }

@@ -66,27 +66,42 @@ interface Tag {
   name: string;
 }
 
+interface StashID {
+  endpoint: string;
+  stash_id: string;
+}
+
+interface Performer {
+  id: string;
+  name: string;
+}
+
 interface SceneResult {
   id: string;
   title: string;
-  studio: { name: string } | null;
+  studio: { id: string; name: string } | null;
   date: string;
   organized: boolean;
   tags: Tag[];
   files: VideoFile[];
+  stash_ids: StashID[];
+  performers: Performer[];
 }
 
 interface ScenePayload {
   sceneId: string;
   title: string;
+  studioId: string;
   studio: string;
   date: string;
   fileId: string;
   file: VideoFile;
   tags: Tag[];
+  stashIds: StashID[];
+  performers: Performer[];
   destinationFolder: string;
   destinationBasename: string;
-  phash: string;
+  phash: string | null;
 }
 
 interface PluginSettings {
