@@ -30,8 +30,7 @@ jobs:
       - name: Build TypeScript plugins (main)
         run: |
           cd main
-          npm ci
-          npm run build
+          if [ -f package.json ]; then npm ci && npm run build; fi
       - run: |
           cd main
           ls -l build_site.sh
@@ -47,8 +46,7 @@ jobs:
       - name: Build TypeScript plugins (develop)
         run: |
           cd develop
-          npm ci
-          npm run build
+          if [ -f package.json ]; then npm ci && npm run build; fi
       - run: |
           cd develop
           ls -l build_site.sh
