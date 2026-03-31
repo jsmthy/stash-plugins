@@ -238,21 +238,36 @@ function codecRank(file: VideoFile): number {
 }
 
 /**
- * Move a file to the .StashDuplicates folder.
- * Appends the file ID to the basename to guarantee uniqueness.
+ * Extract the library root path from a file path.
+ * Finds .StashIngest or .StashDuplicates in the path and returns everything before it.
+ * Falls back to popping two levels if neither marker is found.
+ */
+function getLibraryPathFromFile(filePath: string): string {
+  const parts = filePath.split('/');
+  const ingestIdx = parts.indexOf('.StashIngest');
+  if (ingestIdx > 0) return parts.slice(0, ingestIdx).join('/');
+  const dupIdx = parts.indexOf('.StashDuplicates');
+  if (dupIdx > 0) return parts.slice(0, dupIdx).join('/');
+  // fallback: pop filename and parent dir
+  parts.pop();
+  parts.pop();
+  return parts.join('/');
+}
+
+/**
+ * Move a file to the .StashDuplicates folder at the library root.
+ * Appends a timestamp to the basename to guarantee uniqueness.
  */
 export function moveToDuplicates(fileId: string, filePath: string): boolean {
-  const parts = filePath.split('/');
-  const basename = parts.pop()!;
-  parts.pop();
-  const libraryPath = parts.join('/');
+  const libraryPath = getLibraryPathFromFile(filePath);
   const destFolder = `${libraryPath}/.StashDuplicates`;
 
-  // Append file ID before extension to guarantee uniqueness
+  const basename = filePath.split('/').pop()!;
   const dotIdx = basename.lastIndexOf('.');
+  const ts = Date.now();
   const uniqueBasename = dotIdx > 0
-    ? `${basename.substring(0, dotIdx)}_${fileId}${basename.substring(dotIdx)}`
-    : `${basename}_${fileId}`;
+    ? `${basename.substring(0, dotIdx)}_${ts}${basename.substring(dotIdx)}`
+    : `${basename}_${ts}`;
 
   pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${uniqueBasename}`);
   try {
