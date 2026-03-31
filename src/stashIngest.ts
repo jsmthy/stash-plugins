@@ -39,19 +39,14 @@ if (input.Args.hookContext.type === 'Scene.Update.Post') {
         if (shouldReplace(existing.file, sceneData.file, vrScene)) {
           pluginLog.Info(`Candidate wins — replacing existing scene ${existing.id} file`);
 
-          // Re-verify existing file hasn't already been moved by a concurrent hook
-          if (!isStillAtPath(existing.id, existing.file.path)) {
-            pluginLog.Warn(`Existing file already moved (concurrent hook?), skipping duplicate handling`);
-            moveFile(sceneData);
+          if (!moveToDuplicates(existing.file.id, existing.file.path)) {
+            pluginLog.Error(`Failed to move existing file to .StashDuplicates, aborting`);
             return;
           }
-
-          moveToDuplicates(existing.file.id, existing.file.path);
           moveFile(sceneData);
         } else {
           pluginLog.Info(`Existing scene ${existing.id} wins — moving candidate to .StashDuplicates`);
 
-          // Re-verify incoming file is still in .StashIngest
           if (!isStillInStashIngest(sceneData.sceneId)) {
             pluginLog.Warn(`Incoming file already moved (concurrent hook?), skipping`);
             return;
@@ -92,25 +87,5 @@ function moveFile(sceneData: ScenePayload): void {
     pluginLog.Debug(`Move result: ${JSON.stringify(mutationResult)}`);
   } catch (e) {
     pluginLog.Error(`Failed to move file ${sceneData.fileId}: ${e}`);
-  }
-}
-
-/**
- * Re-fetch a scene and check if its first file is still at the expected path.
- * Guards against concurrent hook invocations moving the same file.
- */
-function isStillAtPath(sceneId: string, expectedPath: string): boolean {
-  try {
-    const result = gql.Do(`
-      query checkPath($id: ID!) {
-        findScene(id: $id) {
-          files { path }
-        }
-      }
-    `, { id: sceneId });
-    const currentPath = result?.findScene?.files?.[0]?.path;
-    return currentPath === expectedPath;
-  } catch {
-    return false;
   }
 }

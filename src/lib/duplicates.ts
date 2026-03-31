@@ -10,6 +10,21 @@ const CODEC_RANK: Record<string, number> = {
   wmv3: 0,
 };
 
+/** Path regex to exclude .StashIngest and .StashDuplicates from queries. */
+const EXCLUDE_PATH_REGEX = '\\.Stash(Ingest|Duplicates)';
+
+/** GQL fragment for scene file fields used in duplicate queries. */
+const SCENE_FILE_FIELDS = `
+  id
+  tags { name }
+  files {
+    ... on VideoFile {
+      id, path, basename, width, height, video_codec, bit_rate, size,
+      fingerprints { type value }
+    }
+  }
+`;
+
 interface ExistingScene {
   id: string;
   file: VideoFile;
@@ -22,6 +37,8 @@ interface ExistingScene {
  * 1. stash_id match (same endpoint + stash_id)
  * 2. phash exact match
  * 3. metadata heuristic (studio + date + performer + normalized title)
+ *
+ * Only matches scenes in "real" library paths — excludes .StashIngest and .StashDuplicates.
  */
 export function findExistingDuplicate(sceneData: ScenePayload): ExistingScene | null {
   // 1. stash_id match
@@ -60,7 +77,7 @@ export function findExistingDuplicate(sceneData: ScenePayload): ExistingScene | 
 function findByStashId(stashIds: StashID[]): Omit<ExistingScene, 'matchMethod'> | null {
   for (const sid of stashIds) {
     const result = gql.Do(`
-      query findByStashId($endpoint: String!, $stash_id: String!) {
+      query findByStashId($endpoint: String!, $stash_id: String!, $excludePath: String!) {
         findScenes(
           scene_filter: {
             stash_id_endpoint: {
@@ -68,22 +85,13 @@ function findByStashId(stashIds: StashID[]): Omit<ExistingScene, 'matchMethod'> 
               stash_id: $stash_id,
               modifier: EQUALS
             }
-            path: { value: ".StashIngest", modifier: EXCLUDES }
+            path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
           }
         ) {
-          scenes {
-            id
-            tags { name }
-            files {
-              ... on VideoFile {
-                id, path, basename, width, height, video_codec, bit_rate, size,
-                fingerprints { type value }
-              }
-            }
-          }
+          scenes { ${SCENE_FILE_FIELDS} }
         }
       }
-    `, { endpoint: sid.endpoint, stash_id: sid.stash_id });
+    `, { endpoint: sid.endpoint, stash_id: sid.stash_id, excludePath: EXCLUDE_PATH_REGEX });
 
     const match = extractFirstScene(result);
     if (match) return match;
@@ -95,26 +103,17 @@ function findByStashId(stashIds: StashID[]): Omit<ExistingScene, 'matchMethod'> 
 
 function findByPhash(phash: string): Omit<ExistingScene, 'matchMethod'> | null {
   const result = gql.Do(`
-    query findByPhash($phash: String!) {
+    query findByPhash($phash: String!, $excludePath: String!) {
       findScenes(
         scene_filter: {
           phash_distance: { value: $phash, modifier: EQUALS, distance: 0 }
-          path: { value: ".StashIngest", modifier: EXCLUDES }
+          path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
         }
       ) {
-        scenes {
-          id
-          tags { name }
-          files {
-            ... on VideoFile {
-              id, path, basename, width, height, video_codec, bit_rate, size,
-              fingerprints { type value }
-            }
-          }
-        }
+        scenes { ${SCENE_FILE_FIELDS} }
       }
     }
-  `, { phash });
+  `, { phash, excludePath: EXCLUDE_PATH_REGEX });
 
   return extractFirstScene(result);
 }
@@ -126,17 +125,16 @@ function normalizeTitle(title: string): string {
 }
 
 function findByMetadata(sceneData: ScenePayload): Omit<ExistingScene, 'matchMethod'> | null {
-  // Query by studio + date, then filter by performer + title in JS
   const performerIds = sceneData.performers.map(p => p.id);
 
   const result = gql.Do(`
-    query findByMetadata($studioId: [ID!]!, $date: DateCriterionInput!, $performerIds: MultiCriterionInput!) {
+    query findByMetadata($studioId: [ID!]!, $date: DateCriterionInput!, $performerIds: MultiCriterionInput!, $excludePath: String!) {
       findScenes(
         scene_filter: {
           studios: { value: $studioId, modifier: INCLUDES }
           date: $date
           performers: $performerIds
-          path: { value: ".StashIngest", modifier: EXCLUDES }
+          path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
         }
       ) {
         scenes {
@@ -156,6 +154,7 @@ function findByMetadata(sceneData: ScenePayload): Omit<ExistingScene, 'matchMeth
     studioId: [sceneData.studioId],
     date: { value: sceneData.date, modifier: 'EQUALS' },
     performerIds: { value: performerIds, modifier: 'INCLUDES' },
+    excludePath: EXCLUDE_PATH_REGEX,
   });
 
   const scenes = result?.findScenes?.scenes;
@@ -198,10 +197,6 @@ function extractFirstScene(result: any): Omit<ExistingScene, 'matchMethod'> | nu
 
 /**
  * Determine whether the candidate file should replace the existing file.
- *
- * 2D scenes: prefer 1080p — if below 1080p prefer higher; if above prefer
- *   closer to 1080p (but never below it). Ties broken by codec efficiency.
- * VR scenes: always prefer highest resolution. Ties broken by codec efficiency.
  */
 export function shouldReplace(
   existingFile: VideoFile,
@@ -217,7 +212,6 @@ export function shouldReplace(
     return codecRank(candidateFile) > codecRank(existingFile);
   }
 
-  // 2D logic
   const candBelow = candidateFile.height < TARGET;
   const existBelow = existingFile.height < TARGET;
 
@@ -244,7 +238,8 @@ function codecRank(file: VideoFile): number {
 }
 
 /**
- * Move a file to the .StashDuplicates folder within the same library path.
+ * Move a file to the .StashDuplicates folder.
+ * Appends the file ID to the basename to guarantee uniqueness.
  */
 export function moveToDuplicates(fileId: string, filePath: string): boolean {
   const parts = filePath.split('/');
@@ -253,7 +248,13 @@ export function moveToDuplicates(fileId: string, filePath: string): boolean {
   const libraryPath = parts.join('/');
   const destFolder = `${libraryPath}/.StashDuplicates`;
 
-  pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
+  // Append file ID before extension to guarantee uniqueness
+  const dotIdx = basename.lastIndexOf('.');
+  const uniqueBasename = dotIdx > 0
+    ? `${basename.substring(0, dotIdx)}_${fileId}${basename.substring(dotIdx)}`
+    : `${basename}_${fileId}`;
+
+  pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${uniqueBasename}`);
   try {
     gql.Do(`
       mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
@@ -266,7 +267,7 @@ export function moveToDuplicates(fileId: string, filePath: string): boolean {
     `, {
       id: fileId,
       dest_folder: destFolder,
-      dest_basename: basename,
+      dest_basename: uniqueBasename,
     });
     return true;
   } catch (e) {
