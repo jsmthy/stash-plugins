@@ -1,3 +1,4 @@
+import { pluginLog } from './log';
 import { sanitizeFilename } from './utils';
 
 /**
@@ -23,33 +24,33 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
     }
   `, { id: sceneId, fpType: 'phash' });
 
-  log.Debug(`Scene ${sceneId} fetched: ${JSON.stringify(result)}`);
+  pluginLog.Debug(`Scene ${sceneId} fetched: ${JSON.stringify(result)}`);
 
   const scene: SceneResult | null = result?.findScene;
   if (!scene) {
-    log.Debug(`Scene ${sceneId} not found`);
+    pluginLog.Debug(`Scene ${sceneId} not found`);
     return null;
   }
 
   if (!(scene.title && scene.studio?.name && scene.date)) {
-    log.Debug(`Scene missing title, studio, or date, skipping ...`);
+    pluginLog.Debug(`Scene ${sceneId} missing title, studio, or date, skipping`);
     return null;
   }
 
   if (!scene.organized) {
-    log.Debug(`Organized is not set to true, skipping ...`);
+    pluginLog.Debug(`Scene ${sceneId} organized is not true, skipping`);
     return null;
   }
 
   if (scene.files.length === 0) {
-    log.Debug(`Scene has no files, skipping ...`);
+    pluginLog.Debug(`Scene ${sceneId} has no files, skipping`);
     return null;
   }
 
   const file = scene.files[0];
 
   if (!file.fingerprint) {
-    log.Debug(`Scene file has no phash, skipping ...`);
+    pluginLog.Debug(`Scene ${sceneId} file has no phash, skipping`);
     return null;
   }
 
@@ -60,7 +61,7 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
   const fileLibraryPath = fileParts.join('/');
 
   if (fileDir !== '.StashIngest') {
-    log.Debug(`File is not in /.StashIngest directory, skipping ...`);
+    pluginLog.Debug(`Scene ${sceneId} file is not in .StashIngest, skipping`);
     return null;
   }
 

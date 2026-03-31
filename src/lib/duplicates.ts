@@ -1,3 +1,4 @@
+import { pluginLog } from './log';
 import { isVR } from './utils';
 
 /** Codec compression efficiency ranking — higher is better compression. */
@@ -45,14 +46,17 @@ export function findExistingDuplicate(phash: string): ExistingScene | null {
 
   const scenes = result?.findScenes?.scenes;
   if (!scenes || scenes.length === 0) {
+    pluginLog.Debug(`No existing duplicate found for phash ${phash}`);
     return null;
   }
 
   const scene = scenes[0];
   if (!scene.files || scene.files.length === 0) {
+    pluginLog.Debug(`Duplicate scene ${scene.id} has no files, ignoring`);
     return null;
   }
 
+  pluginLog.Debug(`Found existing duplicate: scene ${scene.id}, file ${scene.files[0].path}`);
   return {
     id: scene.id,
     file: scene.files[0],
@@ -122,7 +126,7 @@ export function moveToDuplicates(fileId: string, filePath: string): void {
   const libraryPath = parts.join('/');
   const destFolder = `${libraryPath}/.StashDuplicates`;
 
-  log.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
+  pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
   gql.Do(`
     mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
       moveFiles(input: {
