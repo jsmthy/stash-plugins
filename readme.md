@@ -14,31 +14,27 @@
 
 ### Stash Ingest
 
-On scene update, checks for scenes with files in the `.StashIngest` directory that meet some criteria and moves target files to organized Studio directories in the `.StashIngest` directory's parent folder.
+On scene update, checks for scenes with files in the `.StashIngest` directory that meet criteria (title, studio, date, organized, phash) and moves them to organized Studio directories.
 
 #### Example
 
-Given a directory structure:
-
 ```
-Scenes/
-└── .StashIngest/
-    ├── testfile1.mp4
-    └── testfile2.mp4
+Scenes/.StashIngest/testfile1.mp4
+→ Scenes/Best Studio/Best Studio - 2025-01-01 - Best Scene Title [a1b2c3d4e5f6].mp4
 ```
 
-Once the scene associated with `testfile1.mp4` has Title, Studio, Release Date populated and organized flag set to true, it will rename and move the file.
+#### Duplicate Handling
 
-```
-Scenes/
-└── .StashIngest/
-    └── testfile2.mp4
-└── Best Studio/
-    └── Best Studio - 2025-01-01 - Best Scene Title.mp4
-```
+When enabled, incoming files are compared against existing scenes by phash match.
+
+- **2D scenes:** prefers 1080p. Keeps higher if below, closest to 1080p if above.
+- **VR scenes** (tagged "VR"): always keeps highest resolution.
+- **Equal resolution:** prefers better codec (av1 > hevc > h264).
+- Rejected files are moved to `.StashDuplicates`.
 
 #### How to Use
 
 1. Dump files into `.StashIngest/`.
 1. Configure your Identify process to set `organized = true`.
 1. Scan and identify. (Scan with phash to simplify StashDB identification.)
+1. Configure plugin settings (Handle Duplicates, VR Tag Name) as needed.
