@@ -246,7 +246,7 @@ function codecRank(file: VideoFile): number {
 /**
  * Move a file to the .StashDuplicates folder within the same library path.
  */
-export function moveToDuplicates(fileId: string, filePath: string): void {
+export function moveToDuplicates(fileId: string, filePath: string): boolean {
   const parts = filePath.split('/');
   const basename = parts.pop()!;
   parts.pop();
@@ -254,17 +254,23 @@ export function moveToDuplicates(fileId: string, filePath: string): void {
   const destFolder = `${libraryPath}/.StashDuplicates`;
 
   pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
-  gql.Do(`
-    mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
-      moveFiles(input: {
-        ids: [$id],
-        destination_folder: $dest_folder,
-        destination_basename: $dest_basename
-      })
-    }
-  `, {
-    id: fileId,
-    dest_folder: destFolder,
-    dest_basename: basename,
-  });
+  try {
+    gql.Do(`
+      mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
+        moveFiles(input: {
+          ids: [$id],
+          destination_folder: $dest_folder,
+          destination_basename: $dest_basename
+        })
+      }
+    `, {
+      id: fileId,
+      dest_folder: destFolder,
+      dest_basename: basename,
+    });
+    return true;
+  } catch (e) {
+    pluginLog.Error(`Failed to move duplicate file ${fileId}: ${e}`);
+    return false;
+  }
 }

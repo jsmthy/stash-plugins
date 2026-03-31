@@ -2,6 +2,30 @@ import { pluginLog } from './log';
 import { sanitizeFilename } from './utils';
 
 /**
+ * Re-fetch a scene and check if its first file is still in .StashIngest.
+ * Guards against concurrent hook invocations moving the same file.
+ */
+export function isStillInStashIngest(sceneId: string): boolean {
+  try {
+    const result = gql.Do(`
+      query checkIngest($id: ID!) {
+        findScene(id: $id) {
+          files { path }
+        }
+      }
+    `, { id: sceneId });
+    const path: string | undefined = result?.findScene?.files?.[0]?.path;
+    if (!path) return false;
+    const parts = path.split('/');
+    parts.pop(); // filename
+    const dir = parts.pop();
+    return dir === '.StashIngest';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetches scene data and validates that all rename conditions are met:
  * - Scene has title, studio.name, date, organized = true
  * - Scene has at least one file
