@@ -1,4 +1,4 @@
-import { isVR } from './utils';
+import { pluginLog } from './log';
 
 /** Codec compression efficiency ranking — higher is better compression. */
 const CODEC_RANK: Record<string, number> = {
@@ -10,27 +10,136 @@ const CODEC_RANK: Record<string, number> = {
   wmv3: 0,
 };
 
+/** Path regex to exclude .StashIngest and .StashDuplicates from queries. */
+const EXCLUDE_PATH_REGEX = '\\.Stash(Ingest|Duplicates)';
+
+/** GQL fragment for scene file fields used in duplicate queries. */
+const SCENE_FILE_FIELDS = `
+  id
+  tags { name }
+  files {
+    ... on VideoFile {
+      id, path, basename, width, height, video_codec, bit_rate, size,
+      fingerprints { type value }
+    }
+  }
+`;
+
 interface ExistingScene {
   id: string;
   file: VideoFile;
   tags: Tag[];
+  matchMethod: 'stash_id' | 'phash' | 'metadata';
 }
 
 /**
- * Find an already-ingested scene with the same phash (exact match)
- * that is NOT in .StashIngest.
+ * Find an existing duplicate using a three-tier fallback:
+ * 1. stash_id match (same endpoint + stash_id)
+ * 2. phash exact match
+ * 3. metadata heuristic (studio + date + performer + normalized title)
+ *
+ * Only matches scenes in "real" library paths — excludes .StashIngest and .StashDuplicates.
  */
-export function findExistingDuplicate(phash: string): ExistingScene | null {
+export function findExistingDuplicate(sceneData: ScenePayload): ExistingScene | null {
+  // 1. stash_id match
+  const stashIdMatch = findByStashId(sceneData.stashIds);
+  if (stashIdMatch) {
+    pluginLog.Info(`Duplicate match by stash_id: scene ${stashIdMatch.id}`);
+    return { ...stashIdMatch, matchMethod: 'stash_id' };
+  }
+
+  // 2. phash match
+  if (sceneData.phash) {
+    const phashMatch = findByPhash(sceneData.phash);
+    if (phashMatch) {
+      pluginLog.Info(`Duplicate match by phash: scene ${phashMatch.id}`);
+      return { ...phashMatch, matchMethod: 'phash' };
+    }
+  }
+
+  // 3. metadata heuristic
+  if (sceneData.performers.length > 0) {
+    const metadataMatch = findByMetadata(sceneData);
+    if (metadataMatch) {
+      pluginLog.Info(`Duplicate match by metadata: scene ${metadataMatch.id}`);
+      return { ...metadataMatch, matchMethod: 'metadata' };
+    }
+  } else {
+    pluginLog.Debug(`No performers on scene, skipping metadata heuristic`);
+  }
+
+  pluginLog.Debug(`No duplicate found for scene ${sceneData.sceneId}`);
+  return null;
+}
+
+// -- Tier 1: stash_id match --
+
+function findByStashId(stashIds: StashID[]): Omit<ExistingScene, 'matchMethod'> | null {
+  for (const sid of stashIds) {
+    const result = gql.Do(`
+      query findByStashId($endpoint: String!, $stash_id: String!, $excludePath: String!) {
+        findScenes(
+          scene_filter: {
+            stash_id_endpoint: {
+              endpoint: $endpoint,
+              stash_id: $stash_id,
+              modifier: EQUALS
+            }
+            path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
+          }
+        ) {
+          scenes { ${SCENE_FILE_FIELDS} }
+        }
+      }
+    `, { endpoint: sid.endpoint, stash_id: sid.stash_id, excludePath: EXCLUDE_PATH_REGEX });
+
+    const match = extractFirstScene(result);
+    if (match) return match;
+  }
+  return null;
+}
+
+// -- Tier 2: phash match --
+
+function findByPhash(phash: string): Omit<ExistingScene, 'matchMethod'> | null {
   const result = gql.Do(`
-    query findDupes($phash: String!) {
+    query findByPhash($phash: String!, $excludePath: String!) {
       findScenes(
         scene_filter: {
           phash_distance: { value: $phash, modifier: EQUALS, distance: 0 }
-          path: { value: ".StashIngest", modifier: EXCLUDES }
+          path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
+        }
+      ) {
+        scenes { ${SCENE_FILE_FIELDS} }
+      }
+    }
+  `, { phash, excludePath: EXCLUDE_PATH_REGEX });
+
+  return extractFirstScene(result);
+}
+
+// -- Tier 3: metadata heuristic (studio + date + performer + title) --
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function findByMetadata(sceneData: ScenePayload): Omit<ExistingScene, 'matchMethod'> | null {
+  const performerIds = sceneData.performers.map(p => p.id);
+
+  const result = gql.Do(`
+    query findByMetadata($studioId: [ID!]!, $date: DateCriterionInput!, $performerIds: MultiCriterionInput!, $excludePath: String!) {
+      findScenes(
+        scene_filter: {
+          studios: { value: $studioId, modifier: INCLUDES }
+          date: $date
+          performers: $performerIds
+          path: { value: $excludePath, modifier: NOT_MATCHES_REGEX }
         }
       ) {
         scenes {
           id
+          title
           tags { name }
           files {
             ... on VideoFile {
@@ -41,17 +150,43 @@ export function findExistingDuplicate(phash: string): ExistingScene | null {
         }
       }
     }
-  `, { phash });
+  `, {
+    studioId: [sceneData.studioId],
+    date: { value: sceneData.date, modifier: 'EQUALS' },
+    performerIds: { value: performerIds, modifier: 'INCLUDES' },
+    excludePath: EXCLUDE_PATH_REGEX,
+  });
 
   const scenes = result?.findScenes?.scenes;
-  if (!scenes || scenes.length === 0) {
-    return null;
+  if (!scenes || scenes.length === 0) return null;
+
+  const normalizedIncoming = normalizeTitle(sceneData.title);
+
+  for (const scene of scenes) {
+    if (!scene.files || scene.files.length === 0) continue;
+
+    const normalizedExisting = normalizeTitle(scene.title);
+    if (normalizedIncoming === normalizedExisting) {
+      pluginLog.Debug(`Metadata match: "${sceneData.title}" ≈ "${scene.title}" (scene ${scene.id})`);
+      return {
+        id: scene.id,
+        file: scene.files[0],
+        tags: scene.tags ?? [],
+      };
+    }
   }
 
+  return null;
+}
+
+// -- Shared helpers --
+
+function extractFirstScene(result: any): Omit<ExistingScene, 'matchMethod'> | null {
+  const scenes = result?.findScenes?.scenes;
+  if (!scenes || scenes.length === 0) return null;
+
   const scene = scenes[0];
-  if (!scene.files || scene.files.length === 0) {
-    return null;
-  }
+  if (!scene.files || scene.files.length === 0) return null;
 
   return {
     id: scene.id,
@@ -62,10 +197,6 @@ export function findExistingDuplicate(phash: string): ExistingScene | null {
 
 /**
  * Determine whether the candidate file should replace the existing file.
- *
- * 2D scenes: prefer 1080p — if below 1080p prefer higher; if above prefer
- *   closer to 1080p (but never below it). Ties broken by codec efficiency.
- * VR scenes: always prefer highest resolution. Ties broken by codec efficiency.
  */
 export function shouldReplace(
   existingFile: VideoFile,
@@ -81,15 +212,11 @@ export function shouldReplace(
     return codecRank(candidateFile) > codecRank(existingFile);
   }
 
-  // 2D logic
   const candBelow = candidateFile.height < TARGET;
   const existBelow = existingFile.height < TARGET;
 
-  // Candidate below 1080p, existing at/above — keep existing
   if (candBelow && !existBelow) return false;
-  // Existing below 1080p, candidate at/above — replace
   if (existBelow && !candBelow) return true;
-  // Both below 1080p — prefer higher
   if (candBelow && existBelow) {
     if (candidateFile.height !== existingFile.height) {
       return candidateFile.height > existingFile.height;
@@ -97,14 +224,12 @@ export function shouldReplace(
     return codecRank(candidateFile) > codecRank(existingFile);
   }
 
-  // Both at/above 1080p — prefer closer to 1080p
   const candDist = candidateFile.height - TARGET;
   const existDist = existingFile.height - TARGET;
   if (candDist !== existDist) {
     return candDist < existDist;
   }
 
-  // Same resolution — prefer higher compression codec
   return codecRank(candidateFile) > codecRank(existingFile);
 }
 
@@ -113,27 +238,55 @@ function codecRank(file: VideoFile): number {
 }
 
 /**
- * Move a file to the .StashDuplicates folder within the same library path.
+ * Extract the library root path from a file path.
+ * Finds .StashIngest or .StashDuplicates in the path and returns everything before it.
+ * Falls back to popping two levels if neither marker is found.
  */
-export function moveToDuplicates(fileId: string, filePath: string): void {
+function getLibraryPathFromFile(filePath: string): string {
   const parts = filePath.split('/');
-  const basename = parts.pop()!;
-  parts.pop(); // remove current directory (e.g. .StashIngest or studio folder)
-  const libraryPath = parts.join('/');
+  const ingestIdx = parts.indexOf('.StashIngest');
+  if (ingestIdx > 0) return parts.slice(0, ingestIdx).join('/');
+  const dupIdx = parts.indexOf('.StashDuplicates');
+  if (dupIdx > 0) return parts.slice(0, dupIdx).join('/');
+  // fallback: pop filename and parent dir
+  parts.pop();
+  parts.pop();
+  return parts.join('/');
+}
+
+/**
+ * Move a file to the .StashDuplicates folder at the library root.
+ * Appends a timestamp to the basename to guarantee uniqueness.
+ */
+export function moveToDuplicates(fileId: string, filePath: string): boolean {
+  const libraryPath = getLibraryPathFromFile(filePath);
   const destFolder = `${libraryPath}/.StashDuplicates`;
 
-  log.Info(`Moving duplicate file ${fileId} to ${destFolder}/${basename}`);
-  gql.Do(`
-    mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
-      moveFiles(input: {
-        ids: [$id],
-        destination_folder: $dest_folder,
-        destination_basename: $dest_basename
-      })
-    }
-  `, {
-    id: fileId,
-    dest_folder: destFolder,
-    dest_basename: basename,
-  });
+  const basename = filePath.split('/').pop()!;
+  const dotIdx = basename.lastIndexOf('.');
+  const ts = Date.now();
+  const uniqueBasename = dotIdx > 0
+    ? `${basename.substring(0, dotIdx)}_${ts}${basename.substring(dotIdx)}`
+    : `${basename}_${ts}`;
+
+  pluginLog.Info(`Moving duplicate file ${fileId} to ${destFolder}/${uniqueBasename}`);
+  try {
+    gql.Do(`
+      mutation moveFiles($id: ID!, $dest_folder: String, $dest_basename: String) {
+        moveFiles(input: {
+          ids: [$id],
+          destination_folder: $dest_folder,
+          destination_basename: $dest_basename
+        })
+      }
+    `, {
+      id: fileId,
+      dest_folder: destFolder,
+      dest_basename: uniqueBasename,
+    });
+    return true;
+  } catch (e) {
+    pluginLog.Error(`Failed to move duplicate file ${fileId}: ${e}`);
+    return false;
+  }
 }

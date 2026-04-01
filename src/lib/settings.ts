@@ -1,8 +1,10 @@
+import { pluginLog } from './log';
+
 const PLUGIN_ID = 'stashIngest';
 
 const DEFAULTS: PluginSettings = {
   handleDuplicates: true,
-  vrTagName: 'VR',
+  vrTagName: 'Virtual Reality',
 };
 
 export function readPluginSettings(): PluginSettings {
@@ -14,7 +16,7 @@ export function readPluginSettings(): PluginSettings {
       vrTagName: raw.vrTagName ?? DEFAULTS.vrTagName,
     };
   } catch (e) {
-    log.Warn(`Failed to read plugin settings, using defaults: ${e}`);
+    pluginLog.Warn(`Failed to read plugin settings, using defaults: ${e}`);
     return { ...DEFAULTS };
   }
 }
