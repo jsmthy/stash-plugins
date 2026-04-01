@@ -1,5 +1,5 @@
 import { pluginLog } from './log';
-import { sanitizeFilename } from './utils';
+import { sanitizeFilename, buildBasename } from './utils';
 
 /** Check if a path contains .StashIngest as a directory segment. */
 function isInStashIngest(filePath: string): boolean {
@@ -132,10 +132,7 @@ export function checkFileIsReadyForRename(sceneId: string): ScenePayload | null 
   const sanitizedTitle = sanitizeFilename(scene.title);
   const phash = file.fingerprint || null;
 
-  const basenameParts = `${sanitizedStudio} - ${sanitizedDate} - ${sanitizedTitle}`;
-  const destinationBasename = phash
-    ? `${basenameParts} [${phash}].${ext}`
-    : `${basenameParts}.${ext}`;
+  const destinationBasename = buildBasename(sanitizedStudio, sanitizedDate, sanitizedTitle, phash, ext);
 
   return {
     sceneId: scene.id,
