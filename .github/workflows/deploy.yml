@@ -10,6 +10,7 @@ on:
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
+  deployments: write
   pages: write
   id-token: write
 
@@ -22,7 +23,7 @@ jobs:
         with:
           node-version: '20'
       - name: Checkout main
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: main
           ref: main
@@ -37,7 +38,7 @@ jobs:
           chmod +x ./build_site.sh
           ./build_site.sh ../_site/main
       - name: Checkout develop
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: develop
           # change this ref to whatever dev branch/tag we need when necessary
@@ -64,3 +65,12 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Clean up old deployments
+        run: |
+          # Keep only the latest deployment, delete the rest
+          gh api repos/${{ github.repository }}/deployments --paginate --jq '.[].id' | tail -n +2 | while read id; do
+            gh api "repos/${{ github.repository }}/deployments/$id/statuses" -X POST -f state=inactive -f description="cleanup" 2>/dev/null || true
+            gh api "repos/${{ github.repository }}/deployments/$id" -X DELETE 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
